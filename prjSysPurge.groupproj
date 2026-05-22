@@ -1,0 +1,36 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{A5FE6DD1-509A-42B9-84ED-D891A2274130}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="SysPurge.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="SysPurge">
+        <MSBuild Projects="SysPurge.dproj"/>
+    </Target>
+    <Target Name="SysPurge:Clean">
+        <MSBuild Projects="SysPurge.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="SysPurge:Make">
+        <MSBuild Projects="SysPurge.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="SysPurge"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="SysPurge:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="SysPurge:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
