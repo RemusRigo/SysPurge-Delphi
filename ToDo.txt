@@ -1,0 +1,5 @@
+Add Icon
+Add Help
+Delete *.* in %tmp%
+Delete *.log in %SystemDrive%
+Delete *.log in %SystemRoot%
