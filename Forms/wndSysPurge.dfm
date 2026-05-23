@@ -45,6 +45,10 @@ object frmSysPurge: TfrmSysPurge
         Width = 100
       end
       item
+        Caption = 'Results'
+        Width = 150
+      end
+      item
         Caption = 'Progress'
         Width = 100
       end>

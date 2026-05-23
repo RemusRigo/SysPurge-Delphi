@@ -18,10 +18,13 @@ type
       procedure lvSysPurgeCustomDrawSubItem(Sender: TCustomListView; Item: TListItem;
          SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean);
       private
+         function  FormatBytes(B: Int64): string;
          procedure ResizeColumns;
          procedure BuildOptions;
          procedure ProcessActions;
-         procedure SetActionProgress(Item: TListItem; Progress: Integer);
+         procedure SetTaskProgress(item: TListItem; Progress: Integer);
+         procedure TaskCleanFolderSize(Item: TListItem; Bytes: Int64);
+         procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
       public
    end;
 
@@ -33,22 +36,39 @@ implementation
 {$R *.dfm}
 
 uses
-   AppData;
+   AppData,
+   libRights,
+   System.IOUtils, System.Types;
 
 const
    LVIR_BOUNDS        = 0;
 
    // ListView messages
    LVM_FIRST          = $1000; // First
-   LVM_GETSUBITEMRECT = $1038; // Get SubItem Rect
-   LVM_REDRAWITEMS    = $1015;
+   LVM_REDRAWITEMS    = LVM_FIRST + 21;
+   LVM_GETCOLUMNWIDTH = LVM_FIRST + 29;
+   LVM_GETSUBITEMRECT = LVM_FIRST + 56; // Get SubItem Rect
+
+
+function TfrmSysPurge.FormatBytes(B: Int64): string;
+begin
+   if      B >= 1073741824 then Result := Format('%.2f GB', [B / 1073741824])
+   else if B >= 1048576    then Result := Format('%.2f MB', [B / 1048576])
+   else if B >= 1024       then Result := Format('%.1f KB', [B / 1024])
+   else                         Result := Format('%d B',    [B]);
+end;
 
 //-------------------------------------------------------------------------------------------------
 // Resize columns
 procedure TfrmSysPurge.ResizeColumns;
+var
+   w: Integer;
 begin
    lvSysPurge.Columns[0].Width:=-1;
-   lvSysPurge.Columns[1].Width:=Self.ClientWidth-lvSysPurge.Columns[0].Width-175;
+   w:=SendMessage(lvSysPurge.Handle, LVM_GETCOLUMNWIDTH, 0, 0);
+   w:=w+SendMessage(lvSysPurge.Handle, LVM_GETCOLUMNWIDTH, 1, 0);
+   lvSysPurge.Columns[1].Width:=-1;
+   lvSysPurge.Columns[2].Width:=lvSysPurge.ClientWidth-lvSysPurge.Columns[0].Width-lvSysPurge.Columns[1].Width-GetSystemMetrics(SM_CXVSCROLL);;
 end;
 
 //-------------------------------------------------------------------------------------------------
@@ -81,50 +101,114 @@ begin
    ResizeColumns;
 end;
 
-procedure TfrmSysPurge.SetActionProgress(Item: TListItem; Progress: Integer);
-begin
-   Item.Data:=Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
-   // Repaint only this specific row — cheap and flicker-free
-   SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
-   lvSysPurge.Update;
-   Application.ProcessMessages;
-end;
-
 //-------------------------------------------------------------------------------------------------
 // Process Actions
 procedure TfrmSysPurge.ProcessActions;
 var
-  i, g: Integer;
-  grp: TListGroup;
+   i, g : Integer;
+   grp  : TListGroup;
 begin
-   for i:=0 to lvSysPurge.Items.Count - 1 do
+   for i := 0 to lvSysPurge.Items.Count - 1 do
    begin
-      if lvSysPurge.Items[i].Checked then
+      if not lvSysPurge.Items[i].Checked then Continue;
+
+      grp := nil;
+      for g := 0 to lvSysPurge.Groups.Count - 1 do
+         if lvSysPurge.Groups[g].GroupID = lvSysPurge.Items[i].GroupID then
+         begin
+            grp := lvSysPurge.Groups[g];
+            Break;
+         end;
+
+      if not Assigned(grp) then Continue;
+
+      if grp.Header = 'Microsoft Windows' then
       begin
-         grp:=nil;
+         if lvSysPurge.Items[i].Caption = 'Temp files' then
+         begin
+            TaskCleanFolder(lvSysPurge.Items[i], TPath.GetTempPath, '*.*', True);
+            if IsAppElevated then
+               TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Temp'), '*.*', True);
+         end;
 
-         for g:=0 to lvSysPurge.Groups.Count - 1 do
-            if lvSysPurge.Groups[g].GroupID = lvSysPurge.Items[i].GroupID then
-            begin
-               grp:=lvSysPurge.Groups[g];
-               Break;
-            end;
-
-      if Assigned(grp) then
-      begin
-        if (grp.Header = 'Microsoft Windows' )then
-        begin
-           if (lvSysPurge.Items[i].Caption = 'Temp files') then
-           begin
-              // delete files from %temp%
-              // delete files from %SystemRoot%\Temp
-           end;
-
-        end;
-      end
-      else
-        // no group defined
+         if lvSysPurge.Items[i].Caption = 'Prefetch files' then
+            TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Prefetch'), '*.pf', False);
       end;
+   end;
+end;
+
+//-------------------------------------------------------------------------------------------------
+// SetTaskProgress
+procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; Progress: Integer);
+begin
+   TThread.Synchronize(nil, procedure
+   begin
+      Item.Data:=Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
+      SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
+      lvSysPurge.Update;
+   end);
+end;
+
+//-------------------------------------------------------------------------------------------------
+// TaskCleanFolderSize
+procedure TfrmSysPurge.TaskCleanFolderSize(Item: TListItem; Bytes: Int64);
+begin
+   TThread.Synchronize(nil, procedure
+   begin
+      Item.SubItems[0]:=FormatBytes(Bytes);   // column 1
+      SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
+      lvSysPurge.Update;
+   end);
+end;
+
+//-------------------------------------------------------------------------------------------------
+// Task: Clean Folder
+procedure TfrmSysPurge.TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
+var
+   DeletedBytes : Int64;
+   FileSize     : Int64;
+   Files     : TStringDynArray;
+   SearchOpt : TSearchOption;
+   i         : Integer;
+begin
+   DeletedBytes:=0;
+   SetTaskProgress(item, 0);
+
+   if not TDirectory.Exists(Path) then
+   begin
+      SetTaskProgress(Item, 100);
+      Exit;
+   end;
+
+   if Recursive then
+      SearchOpt:=TSearchOption.soAllDirectories
+   else
+      SearchOpt:=TSearchOption.soTopDirectoryOnly;
+
+   try
+      Files := TDirectory.GetFiles(Path, Mask, SearchOpt);
+   except
+      SetTaskProgress(Item, 100);
+      Exit;
+   end;
+
+   if Length(Files) = 0 then
+   begin
+      SetTaskProgress(Item, 100);
+      Exit;
+   end;
+
+   for i:= 0 to High(Files) do
+   begin
+      try
+         FileSize := TFile.GetSize(Files[i]); // read before deleting
+         TFile.Delete(Files[i]);              // delete file
+         Inc(DeletedBytes, FileSize);         // add new file size to total size
+      except
+         // skip locked / access-denied files silently
+      end;
+      TaskCleanFolderSize(Item, DeletedBytes);
+      SetTaskProgress(Item, Round((i + 1) / Length(Files) * 100));
    end;
 end;
 
@@ -160,7 +244,8 @@ var
    Cvs      : TCanvas;
    Text     : string;
 begin
-   if SubItem <> 1 then Exit;
+   // Draw ProGressBar on column 3 (sub-item 2)
+   if SubItem <> 2 then Exit;
 
    DefaultDraw := False;
    Cvs := Sender.Canvas;
@@ -215,7 +300,19 @@ end;
 
 procedure TfrmSysPurge.toolBtnPurgeClick(Sender: TObject);
 begin
-   ProcessActions;
+   toolBtnPurge.Enabled:=False;
+
+   TThread.CreateAnonymousThread(procedure
+   begin
+      try
+         ProcessActions;
+      finally
+         TThread.Synchronize(nil, procedure
+         begin
+            toolBtnPurge.Enabled:=True;
+         end);
+      end;
+   end).Start;
 end;
 
 end.
