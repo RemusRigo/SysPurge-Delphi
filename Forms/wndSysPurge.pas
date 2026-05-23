@@ -18,12 +18,10 @@ type
       procedure lvSysPurgeCustomDrawSubItem(Sender: TCustomListView; Item: TListItem;
          SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean);
       private
-         function  FormatBytes(B: Int64): string;
          procedure ResizeColumns;
          procedure BuildOptions;
          procedure ProcessActions;
-         procedure SetTaskProgress(item: TListItem; Progress: Integer);
-         procedure TaskCleanFolderSize(Item: TListItem; Bytes: Int64);
+         procedure SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer);
          procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
       public
    end;
@@ -50,14 +48,6 @@ const
    LVM_GETSUBITEMRECT = LVM_FIRST + 56; // Get SubItem Rect
 
 
-function TfrmSysPurge.FormatBytes(B: Int64): string;
-begin
-   if      B >= 1073741824 then Result := Format('%.2f GB', [B / 1073741824])
-   else if B >= 1048576    then Result := Format('%.2f MB', [B / 1048576])
-   else if B >= 1024       then Result := Format('%.1f KB', [B / 1024])
-   else                         Result := Format('%d B',    [B]);
-end;
-
 //-------------------------------------------------------------------------------------------------
 // Resize columns
 procedure TfrmSysPurge.ResizeColumns;
@@ -65,37 +55,40 @@ var
    w: Integer;
 begin
    lvSysPurge.Columns[0].Width:=-1;
+   lvSysPurge.Columns[1].Width:=-1;
    w:=SendMessage(lvSysPurge.Handle, LVM_GETCOLUMNWIDTH, 0, 0);
    w:=w+SendMessage(lvSysPurge.Handle, LVM_GETCOLUMNWIDTH, 1, 0);
-   lvSysPurge.Columns[1].Width:=-1;
-   lvSysPurge.Columns[2].Width:=lvSysPurge.ClientWidth-lvSysPurge.Columns[0].Width-lvSysPurge.Columns[1].Width-GetSystemMetrics(SM_CXVSCROLL);;
+   lvSysPurge.Columns[2].Width:=lvSysPurge.ClientWidth-w-GetSystemMetrics(SM_CXVSCROLL);;
 end;
 
 //-------------------------------------------------------------------------------------------------
 // Build ListView items with groups
 procedure TfrmSysPurge.BuildOptions;
 var
-  grp : TListGroup;
-  item: TListItem;
+   grp : TListGroup;
+   item: TListItem;
+
+   procedure CreateGroup(const name: String);
+   begin
+      grp:=lvSysPurge.Groups.Add;
+      grp.Header:=name;
+   end;
+
+   procedure AddItem(const Caption: string; Checked: Boolean);
+   begin
+      item := lvSysPurge.Items.Add;
+      item.Checked := Checked;
+      item.Caption := Caption;
+      item.SubItems.Add('');   // col 1 - size
+      item.SubItems.Add('');   // col 2 - progress
+      item.Data := Pointer(NativeInt(0));
+      item.GroupID := grp.GroupID;
+   end;
 begin
-   // Microsoft Windows
-   grp:=lvSysPurge.Groups.Add;
-   grp.Header:='Microsoft Windows';
 
-   // Temp files
-   item:=lvSysPurge.Items.Add;
-   item.Checked:=True;
-   item.Caption:='Temp files';
-   item.SubItems.Add('');
-   item.Data:=Pointer(NativeInt(0));
-   item.GroupID:=grp.GroupID;
-
-   // %SystemRoot%\prefetch\*.pf
-   item:=lvSysPurge.Items.Add;
-   item.Caption:= 'Prefetch files';
-   item.SubItems.Add('');
-   item.Data:=Pointer(NativeInt(0));
-   item.GroupID:=grp.GroupID;
+   CreateGroup('Microsoft Windows');
+   AddItem('Temp files', True);
+   AddItem('Prefetch files', False);
 
    // resize columns
    ResizeColumns;
@@ -139,23 +132,25 @@ end;
 
 //-------------------------------------------------------------------------------------------------
 // SetTaskProgress
-procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; Progress: Integer);
-begin
-   TThread.Synchronize(nil, procedure
-   begin
-      Item.Data:=Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
-      SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
-      lvSysPurge.Update;
-   end);
-end;
+procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer);
+var
+   FormattedSize: string;
 
-//-------------------------------------------------------------------------------------------------
-// TaskCleanFolderSize
-procedure TfrmSysPurge.TaskCleanFolderSize(Item: TListItem; Bytes: Int64);
+   function FormatBytes(B: Int64): string;
+   begin
+      if      B >= 1073741824 then Result := Format('%.2f GB', [B / 1073741824])
+      else if B >= 1048576    then Result := Format('%.2f MB', [B / 1048576])
+      else if B >= 1024       then Result := Format('%.1f KB', [B / 1024])
+      else                         Result := Format('%d B',    [B]);
+   end;
+
 begin
+   FormattedSize:=FormatBytes(Bytes);
    TThread.Synchronize(nil, procedure
    begin
-      Item.SubItems[0]:=FormatBytes(Bytes);   // column 1
+      Item.SubItems[0]:=FormattedSize;
+      Item.Data := Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
+      ResizeColumns;
       SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
       lvSysPurge.Update;
    end);
@@ -167,16 +162,18 @@ procedure TfrmSysPurge.TaskCleanFolder(item: TListItem; const Path, Mask: string
 var
    DeletedBytes : Int64;
    FileSize     : Int64;
-   Files     : TStringDynArray;
-   SearchOpt : TSearchOption;
-   i         : Integer;
+   Files        : TStringDynArray;
+   SearchOpt    : TSearchOption;
+   i            : Integer;
+   LastUpdate   : Cardinal;
 begin
    DeletedBytes:=0;
-   SetTaskProgress(item, 0);
+   LastUpdate:=0;
+   SetTaskProgress(item, DeletedBytes, 0);
 
    if not TDirectory.Exists(Path) then
    begin
-      SetTaskProgress(Item, 100);
+      SetTaskProgress(item, DeletedBytes, 100);
       Exit;
    end;
 
@@ -188,13 +185,13 @@ begin
    try
       Files := TDirectory.GetFiles(Path, Mask, SearchOpt);
    except
-      SetTaskProgress(Item, 100);
+      SetTaskProgress(item, DeletedBytes, 100);
       Exit;
    end;
 
    if Length(Files) = 0 then
    begin
-      SetTaskProgress(Item, 100);
+      SetTaskProgress(item, DeletedBytes, 100);
       Exit;
    end;
 
@@ -207,9 +204,15 @@ begin
       except
          // skip locked / access-denied files silently
       end;
-      TaskCleanFolderSize(Item, DeletedBytes);
-      SetTaskProgress(Item, Round((i + 1) / Length(Files) * 100));
+
+      if GetTickCount - LastUpdate >= 25 then
+      begin
+         SetTaskProgress(Item, DeletedBytes, Round((i + 1) / Length(Files) * 100));
+         LastUpdate := GetTickCount;
+      end;
    end;
+
+   SetTaskProgress(Item, DeletedBytes, 100);  // ensure final state is always shown
 end;
 
 //-------------------------------------------------------------------------------------------------

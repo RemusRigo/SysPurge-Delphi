@@ -32,6 +32,7 @@ Just run SysPurge.exe
 
 ## Roadmap
 
+* 2026-05-25: Fix: Resize columns "bug" / rethinking the logic behind it :)
 * 2026-05-24: Add: Delete prefetch files
 * 2026-05-24: Add: Delete temp files (user \& system)
 * 2026-05-24: Add: Column 2 to show results, Column 3 to show Progress
