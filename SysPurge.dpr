@@ -5,7 +5,9 @@ uses
   wndSysPurge in 'Forms\wndSysPurge.pas' {frmSysPurge},
   wndAbout in 'Forms\wndAbout.pas' {frmAbout},
   AppData in 'Units\AppData.pas',
-  libRights in 'Units\libRights.pas';
+  libRights in 'Units\libRights.pas',
+  libReg in 'Units\libReg.pas',
+  libMessages in 'Units\libMessages.pas';
 
 {$R *.res}
 

@@ -4,7 +4,7 @@
         <ProjectVersion>20.1</ProjectVersion>
         <FrameworkType>VCL</FrameworkType>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Release</Config>
+        <Config Condition="'$(Config)'==''">Debug</Config>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <ProjectName Condition="'$(ProjectName)'==''">SysPurge</ProjectName>
         <TargetedPlatforms>3</TargetedPlatforms>
@@ -143,6 +143,8 @@
         </DCCReference>
         <DCCReference Include="Units\AppData.pas"/>
         <DCCReference Include="Units\libRights.pas"/>
+        <DCCReference Include="Units\libReg.pas"/>
+        <DCCReference Include="Units\libMessages.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -171,6 +173,12 @@
             <Deployment Version="4">
                 <DeployFile LocalName="bin\Win32\Debug\SysPurge.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
+                        <RemoteName>SysPurge.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="bin\Win64\Release\SysPurge.exe" Configuration="Release" Class="ProjectOutput">
+                    <Platform Name="Win64">
                         <RemoteName>SysPurge.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>

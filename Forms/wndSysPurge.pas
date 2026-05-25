@@ -7,6 +7,9 @@ uses
   System.SysUtils, System.Variants, System.Classes, System.Math,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ComCtrls, Vcl.ToolWin;
 
+const
+   SYSMENU_ABOUT_ID = UINT(1000);
+
 type
    TfrmSysPurge = class(TForm)
       ToolBar1: TToolBar;
@@ -17,12 +20,17 @@ type
       procedure toolBtnPurgeClick(Sender: TObject);
       procedure lvSysPurgeCustomDrawSubItem(Sender: TCustomListView; Item: TListItem;
          SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean);
+      protected
+         procedure CreateWnd; override;
+         procedure WndProc(var Message: TMessage); override;
       private
          procedure ResizeColumns;
          procedure BuildOptions;
          procedure ProcessActions;
-         procedure SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer);
+         procedure SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer); overload;
+         procedure SetTaskProgress(Item: TListItem; count: Integer; Progress: Integer); overload;
          procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
+         procedure TaskCleanRegistryMissingDLLFiles(item: TListItem; Root: HKEY; path: String);
       public
    end;
 
@@ -34,19 +42,38 @@ implementation
 {$R *.dfm}
 
 uses
-   AppData,
-   libRights,
-   System.IOUtils, System.Types;
+   AppData, wndAbout,
+   libRights, libReg, libMessages,
+   System.IOUtils, System.Types, Registry;
 
-const
-   LVIR_BOUNDS        = 0;
+procedure TfrmSysPurge.CreateWnd;
+var
+   hSysMenu: HMENU;
+begin
+   inherited;
+   hSysMenu := GetSystemMenu(Handle, False);
+   AppendMenu(hSysMenu, MF_SEPARATOR, 0, nil);
+   AppendMenu(hSysMenu, MF_STRING,    SYSMENU_ABOUT_ID, 'About...');
+end;
 
-   // ListView messages
-   LVM_FIRST          = $1000; // First
-   LVM_REDRAWITEMS    = LVM_FIRST + 21;
-   LVM_GETCOLUMNWIDTH = LVM_FIRST + 29;
-   LVM_GETSUBITEMRECT = LVM_FIRST + 56; // Get SubItem Rect
-
+//-------------------------------------------------------------------------------------------------
+// WndProc
+procedure TfrmSysPurge.WndProc(var Message: TMessage);
+var
+  frm: TfrmAbout;
+begin
+   inherited;
+   if Message.Msg = WM_SYSCOMMAND then
+      if UINT(Message.WParam) = SYSMENU_ABOUT_ID then
+      begin
+         frm:=TfrmAbout.Create(Self);
+         try
+            frm.ShowModal;
+         finally
+            frm.Free;
+         end;
+      end;
+end;
 
 //-------------------------------------------------------------------------------------------------
 // Resize columns
@@ -86,9 +113,15 @@ var
    end;
 begin
 
-   CreateGroup('Microsoft Windows');
+   CreateGroup('Microsoft Windows FileSystem');
    AddItem('Temp files', True);
+   AddItem('Log files (inside Windows)', True);
+   AddItem('Log files (System drive)', False);
    AddItem('Prefetch files', False);
+
+   CreateGroup('Microsoft Windows Registry');
+   if IsAppElevated then
+      AddItem('Shared DLL''s', True);
 
    // resize columns
    ResizeColumns;
@@ -115,18 +148,43 @@ begin
 
       if not Assigned(grp) then Continue;
 
-      if grp.Header = 'Microsoft Windows' then
+      // Windows FileSystem =======================================================================
+      if grp.Header = 'Microsoft Windows FileSystem' then
       begin
+
+         // %Temp% --------------------------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Temp files' then
          begin
-            TaskCleanFolder(lvSysPurge.Items[i], TPath.GetTempPath, '*.*', True);
+            //TaskCleanFolder(lvSysPurge.Items[i], TPath.GetTempPath, '*.*', True);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('tmp'), '*.*', True);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('temp'), '*.*', True);
             if IsAppElevated then
                TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Temp'), '*.*', True);
          end;
 
+         // c:\Windows\*.log ----------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'Log files (inside Windows)' then
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemRoot'), '*.log', False);
+
+         // c:\*.log ------------------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'Log files (System drive)' then
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemDrive'), '*.log', False);
+
+         // c:\Windows\Prefetch\*.pf --------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Prefetch files' then
             TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Prefetch'), '*.pf', False);
       end;
+
+      // Windows Registry =========================================================================
+      if grp.Header = 'Microsoft Windows Registry' then
+      begin
+
+         // Shared DLL's
+         if IsAppElevated then
+            if lvSysPurge.Items[i].Caption = 'Shared DLL''s' then
+               TaskCleanRegistryMissingDLLFiles(lvSysPurge.Items[i], HKEY_LOCAL_MACHINE, 'Software\Microsoft\Windows\CurrentVersion\SharedDLLs');
+      end;
+
    end;
 end;
 
@@ -150,6 +208,21 @@ begin
    begin
       Item.SubItems[0]:=FormattedSize;
       Item.Data := Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
+      ResizeColumns;
+      SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
+      lvSysPurge.Update;
+   end);
+end;
+
+procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; count: Integer; Progress: Integer);
+var
+   FormattedCount : string;
+begin
+   FormattedCount:=Format('%d entries', [count]);
+   TThread.Synchronize(nil, procedure
+   begin
+      Item.SubItems[0]:=FormattedCount;
+      Item.Data:=Pointer(NativeInt(EnsureRange(Progress, 0, 100)));
       ResizeColumns;
       SendMessage(lvSysPurge.Handle, LVM_REDRAWITEMS, WPARAM(Item.Index), LPARAM(Item.Index));
       lvSysPurge.Update;
@@ -215,6 +288,64 @@ begin
    SetTaskProgress(Item, DeletedBytes, 100);  // ensure final state is always shown
 end;
 
+//-------------------------------------------------------------------------------------------------
+// Task: Clean Missing files from Registry
+procedure TfrmSysPurge.TaskCleanRegistryMissingDLLFiles(item: TListItem; root: HKEY; path: String);
+var
+   i          : Integer;
+   reg        : TRegistry;
+   names      : TStringList;
+   deleted    : Integer;
+   lastUpdate : Cardinal;
+   filePath   : String;
+begin
+   SetTaskProgress(Item, 0, 0);
+   deleted:=0;
+   lastUpdate:=0;
+   reg:=TRegistry.Create(KEY_READ or KEY_SET_VALUE or KEY_WOW64_64KEY);
+   names:=TStringList.Create;
+   try
+      reg.RootKey:=root;
+
+      if not Reg.OpenKey(path, False) then
+      begin
+         ShowMessage('exit');
+         SetTaskProgress(Item, 0, 100);
+         Exit;
+      end;
+
+      reg.GetValueNames(names);
+
+      for i:=0 to Names.Count - 1 do
+      begin
+         // expand any environment strings e.g. %SystemRoot%
+         filePath:=ExpandUNCFileName(names[i]);
+         if not TFile.Exists(filePath) then
+         begin
+            try
+         ShowMessage(filePath);
+         ShowMessage(names[i]);
+               Reg.DeleteValue(names[i]);
+               Inc(Deleted);
+            except
+               // skip values we can't delete (permissions etc.)
+            end;
+         end;
+
+         if GetTickCount - LastUpdate >= 25 then
+         begin
+            SetTaskProgress(item, deleted, Round((i + 1) / names.Count * 100));
+            LastUpdate:=GetTickCount;
+         end;
+      end;
+
+      reg.CloseKey;
+      SetTaskProgress(item, deleted, 100);
+   finally
+      names.Free;
+      reg.Free;
+   end;
+end;
 //-------------------------------------------------------------------------------------------------
 // frmSysPurge: onCreate
 procedure TfrmSysPurge.FormCreate(Sender: TObject);

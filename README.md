@@ -19,8 +19,11 @@ Just run SysPurge.exe
 
 ## Features
 
+* Build options at startup (if application is not running with elevated privileges, some options are not available)
 * Delete Windows Temporary files
 * Delete Windows Prefetch files
+* Delete Windows log files
+* Delete Registry missing Shared Dll's
 
 
 
@@ -32,6 +35,8 @@ Just run SysPurge.exe
 
 ## Roadmap
 
+* 2026-05-25: Add: Show About form if right-click on title/caption
+* 2026-05-25: Add: Delete Registry entries for missing Shared Dll's
 * 2026-05-25: Fix: Resize columns "bug" / rethinking the logic behind it :)
 * 2026-05-24: Add: Delete prefetch files
 * 2026-05-24: Add: Delete temp files (user \& system)
