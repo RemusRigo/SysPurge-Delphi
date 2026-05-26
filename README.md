@@ -20,21 +20,25 @@ Just run SysPurge.exe
 ## Features
 
 * Build options at startup (if application is not running with elevated privileges, some options are not available)
-* Delete Windows Temporary files
-* Delete Windows Prefetch files
 * Delete Windows log files
+* Delete Windows Prefetch files
+* Delete Windows Temporary files
+* Clean Windows Update cache
 * Delete Registry missing Shared Dll's
 
 
 
 ## Statistics
 
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/RemusRigo/SysPurge-Delphi/total)
+!\[GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/RemusRigo/SysPurge-Delphi/total)
 
 
 
 ## Roadmap
 
+* 2026-05-26: Add: Clean Windows Update cache
+* 2026-05-26: Add: [Windows](https://icon-icons.com/icon/windows/284) by [Kyo-Tux (Asher)](https://icon-icons.com/authors/5-kyo-tux-asher)
+* 2026-05-26: Add: [Recycle bin empty](https://icon-icons.com/icon/recycle-bin-empty/14827) by [Tatice](https://icon-icons.com/authors/55-tatice)
 * 2026-05-25: Add: Show About form if right-click on title/caption
 * 2026-05-25: Add: Delete Registry entries for missing Shared Dll's
 * 2026-05-25: Fix: Resize columns "bug" / rethinking the logic behind it :)

@@ -5,7 +5,8 @@ interface
 uses
   Winapi.Windows, Winapi.Messages,
   System.SysUtils, System.Variants, System.Classes, System.Math,
-  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ComCtrls, Vcl.ToolWin;
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ComCtrls, Vcl.ToolWin, System.ImageList,
+  Vcl.ImgList;
 
 const
    SYSMENU_ABOUT_ID = UINT(1000);
@@ -15,6 +16,7 @@ type
       ToolBar1: TToolBar;
       toolBtnPurge: TToolButton;
       lvSysPurge: TListView;
+    imgListLV: TImageList;
       procedure FormCreate(Sender: TObject);
       procedure FormResize(Sender: TObject);
       procedure toolBtnPurgeClick(Sender: TObject);
@@ -29,7 +31,7 @@ type
          procedure ProcessActions;
          procedure SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer); overload;
          procedure SetTaskProgress(Item: TListItem; count: Integer; Progress: Integer); overload;
-         procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
+         procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive, DeleteFolders: Boolean);
          procedure TaskCleanRegistryMissingDLLFiles(item: TListItem; Root: HKEY; path: String);
       public
    end;
@@ -43,7 +45,7 @@ implementation
 
 uses
    AppData, wndAbout,
-   libRights, libReg, libMessages,
+   libRights, libReg, libMessages, libServices,
    System.IOUtils, System.Types, Registry;
 
 procedure TfrmSysPurge.CreateWnd;
@@ -95,33 +97,37 @@ var
    grp : TListGroup;
    item: TListItem;
 
-   procedure CreateGroup(const name: String);
+   procedure CreateGroup(const name: String; imgIndex: Integer);
    begin
       grp:=lvSysPurge.Groups.Add;
       grp.Header:=name;
+      grp.TitleImage:=imgIndex;
    end;
 
-   procedure AddItem(const Caption: string; Checked: Boolean);
+   procedure AddItem(const caption: string; imgIndex: Integer; checked: Boolean);
    begin
-      item := lvSysPurge.Items.Add;
-      item.Checked := Checked;
-      item.Caption := Caption;
-      item.SubItems.Add('');   // col 1 - size
-      item.SubItems.Add('');   // col 2 - progress
+      item:= lvSysPurge.Items.Add;
+      item.Checked:=Checked;
+      item.Caption:=Caption;
+      item.SubItems.Add('');
+      item.SubItems.Add('');
       item.Data := Pointer(NativeInt(0));
-      item.GroupID := grp.GroupID;
+      item.ImageIndex:=imgIndex;
+      item.GroupID:=grp.GroupID;
    end;
 begin
 
-   CreateGroup('Microsoft Windows FileSystem');
-   AddItem('Temp files', True);
-   AddItem('Log files (inside Windows)', True);
-   AddItem('Log files (System drive)', False);
-   AddItem('Prefetch files', False);
+   CreateGroup('Microsoft Windows FileSystem', 0);
+   AddItem('Log files (inside Windows)', 0, True);
+   AddItem('Log files (System drive)', 0, False);
+   AddItem('Prefetch files', 0, False);
+   AddItem('Temp files (Current User)', 0, True);
+   AddItem('Temp files (Windows)', 0, True);
+   AddItem('Windows Update cache', 0, True);
 
-   CreateGroup('Microsoft Windows Registry');
+   CreateGroup('Microsoft Windows Registry', 1);
    if IsAppElevated then
-      AddItem('Shared DLL''s', True);
+      AddItem('Shared DLL''s', 1, True);
 
    // resize columns
    ResizeColumns;
@@ -152,27 +158,49 @@ begin
       if grp.Header = 'Microsoft Windows FileSystem' then
       begin
 
-         // %Temp% --------------------------------------------------------------------------------
-         if lvSysPurge.Items[i].Caption = 'Temp files' then
-         begin
-            //TaskCleanFolder(lvSysPurge.Items[i], TPath.GetTempPath, '*.*', True);
-            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('tmp'), '*.*', True);
-            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('temp'), '*.*', True);
-            if IsAppElevated then
-               TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Temp'), '*.*', True);
-         end;
-
          // c:\Windows\*.log ----------------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Log files (inside Windows)' then
-            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemRoot'), '*.log', False);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemRoot'), '*.log', False, False);
 
          // c:\*.log ------------------------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Log files (System drive)' then
-            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemDrive'), '*.log', False);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemDrive'), '*.log', False, False);
 
-         // c:\Windows\Prefetch\*.pf --------------------------------------------------------------
+         // %SystemRoot%\Prefetch\*.pf --------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Prefetch files' then
-            TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Prefetch'), '*.pf', False);
+            TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Prefetch'), '*.pf', False, False);
+
+         // %Temp% --------------------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'Temp files (Current User)' then
+         begin
+            //TaskCleanFolder(lvSysPurge.Items[i], TPath.GetTempPath, '*.*', True);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('tmp'), '*.*', True, True);
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('temp'), '*.*', True, True);
+         end;
+
+         // %SystemRoot%\Temp ---------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'Temp files (Windows)' then
+         begin
+            if IsAppElevated then
+               TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'Temp'), '*.*', True, True);
+         end;
+
+         // %SystemRoot%\SoftwareDistribution\Download
+         if lvSysPurge.Items[i].Caption = 'Windows Update cache' then
+         begin
+            ShowMessage('check');
+            if IsAppElevated then
+            begin
+               if GetServiceState('wuauserv') <> SERVICE_STOPPED then
+               begin
+                  if not StopServiceAndWait('wuauserv', 10000) then
+                     exit;
+               end;
+               ShowMessage('srv stopped');
+               TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'SoftwareDistribution\Download'), '*.*', True, True);
+               ServiceControl('wuauserv', 0); // restart
+            end;
+         end;
       end;
 
       // Windows Registry =========================================================================
@@ -189,7 +217,7 @@ begin
 end;
 
 //-------------------------------------------------------------------------------------------------
-// SetTaskProgress
+// SetTaskProgress  (count size of files)
 procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; Bytes: Int64; Progress: Integer);
 var
    FormattedSize: string;
@@ -214,6 +242,8 @@ begin
    end);
 end;
 
+//-------------------------------------------------------------------------------------------------
+// SetTaskProgress (count files/items)
 procedure TfrmSysPurge.SetTaskProgress(Item: TListItem; count: Integer; Progress: Integer);
 var
    FormattedCount : string;
@@ -231,11 +261,12 @@ end;
 
 //-------------------------------------------------------------------------------------------------
 // Task: Clean Folder
-procedure TfrmSysPurge.TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive: Boolean);
+procedure TfrmSysPurge.TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive, DeleteFolders: Boolean);
 var
    DeletedBytes : Int64;
    FileSize     : Int64;
    Files        : TStringDynArray;
+   Folders      : TStringDynArray;
    SearchOpt    : TSearchOption;
    i            : Integer;
    LastUpdate   : Cardinal;
@@ -262,12 +293,7 @@ begin
       Exit;
    end;
 
-   if Length(Files) = 0 then
-   begin
-      SetTaskProgress(item, DeletedBytes, 100);
-      Exit;
-   end;
-
+   // delete files
    for i:= 0 to High(Files) do
    begin
       try
@@ -286,6 +312,27 @@ begin
    end;
 
    SetTaskProgress(Item, DeletedBytes, 100);  // ensure final state is always shown
+
+   // --- delete folders ---
+   if DeleteFolders and Recursive then
+   begin
+      try
+         Folders:=TDirectory.GetDirectories(Path, '*', TSearchOption.soAllDirectories);
+      except
+         Folders:=nil;
+      end;
+
+      // reverse order = deepest folders first
+      for i := High(Folders) downto 0 do
+      begin
+         try
+            TDirectory.Delete(Folders[i], False); // False = non-recursive, must be empty
+         except
+            // skip if not empty or access denied
+         end;
+      end;
+   end;
+
 end;
 
 //-------------------------------------------------------------------------------------------------
@@ -323,8 +370,6 @@ begin
          if not TFile.Exists(filePath) then
          begin
             try
-         ShowMessage(filePath);
-         ShowMessage(names[i]);
                Reg.DeleteValue(names[i]);
                Inc(Deleted);
             except
@@ -361,6 +406,8 @@ begin
    ResizeColumns;
 end;
 
+//-------------------------------------------------------------------------------------------------
+// lvSysPurge: CustomDrawSubItem
 procedure TfrmSysPurge.lvSysPurgeCustomDrawSubItem(Sender: TCustomListView; Item: TListItem;
   SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean);
 const
@@ -375,14 +422,14 @@ var
    Progress : Integer;
    FillW    : Integer;
    FillRect : TRect;
-   Cvs      : TCanvas;
+   lvCanvas : TCanvas;
    Text     : string;
 begin
    // Draw ProGressBar on column 3 (sub-item 2)
    if SubItem <> 2 then Exit;
 
    DefaultDraw := False;
-   Cvs := Sender.Canvas;
+   lvCanvas := Sender.Canvas;
 
    // Retrieve the exact subitem bounding rect from the listview
    R.Top  := SubItem;
@@ -395,9 +442,9 @@ begin
    Progress := Integer(NativeInt(Item.Data));   // 0..100
 
    // -- Background --
-   Cvs.Brush.Color := COLOR_BG;
-   Cvs.Brush.Style := bsSolid;
-   Cvs.FillRect(R);
+   lvCanvas.Brush.Color := COLOR_BG;
+   lvCanvas.Brush.Style := bsSolid;
+   lvCanvas.FillRect(R);
 
    // -- Filled portion --
    if Progress > 0 then
@@ -407,31 +454,32 @@ begin
       FillRect.Right := FillRect.Left + FillW;
 
       if Progress >= 100 then
-         Cvs.Brush.Color := COLOR_FILL_DONE
+         lvCanvas.Brush.Color := COLOR_FILL_DONE
       else
-         Cvs.Brush.Color := COLOR_FILL_ACTIVE;
+         lvCanvas.Brush.Color := COLOR_FILL_ACTIVE;
 
-      Cvs.Brush.Style := bsSolid;
-      Cvs.FillRect(FillRect);
+      lvCanvas.Brush.Style := bsSolid;
+      lvCanvas.FillRect(FillRect);
    end;
 
    // -- Border --
-   Cvs.Brush.Style := bsClear;
-   Cvs.Pen.Color   := COLOR_BORDER;
-   Cvs.Rectangle(R);
+   lvCanvas.Brush.Style := bsClear;
+   lvCanvas.Pen.Color   := COLOR_BORDER;
+   lvCanvas.Rectangle(R);
 
    // -- Percentage label, centred --
    if Progress > 0 then
    begin
       Text := IntToStr(Progress) + '%';
-      Cvs.Brush.Style := bsClear;
-      Cvs.Font.Color  := clBlack;
-      Cvs.Font.Size   := 8;
-      DrawText(Cvs.Handle, PChar(Text), -1, R,
-         DT_CENTER or DT_VCENTER or DT_SINGLELINE);
+      lvCanvas.Brush.Style := bsClear;
+      lvCanvas.Font.Color  := clBlack;
+      lvCanvas.Font.Size   := 8;
+      DrawText(lvCanvas.Handle, PChar(Text), -1, R, DT_CENTER or DT_VCENTER or DT_SINGLELINE);
    end;
 end;
 
+//-------------------------------------------------------------------------------------------------
+// toolBtnPurge: onClick
 procedure TfrmSysPurge.toolBtnPurgeClick(Sender: TObject);
 begin
    toolBtnPurge.Enabled:=False;

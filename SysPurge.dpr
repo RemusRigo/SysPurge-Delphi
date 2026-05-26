@@ -7,7 +7,8 @@ uses
   AppData in 'Units\AppData.pas',
   libRights in 'Units\libRights.pas',
   libReg in 'Units\libReg.pas',
-  libMessages in 'Units\libMessages.pas';
+  libMessages in 'Units\libMessages.pas',
+  libServices in 'Units\libServices.pas';
 
 {$R *.res}
 

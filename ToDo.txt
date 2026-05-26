@@ -1,2 +1,2 @@
-Add Icon
-Add Help
+Add App Icon
+Add Icons to ListView groups & items 
