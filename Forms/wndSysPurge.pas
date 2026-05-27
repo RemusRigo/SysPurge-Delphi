@@ -118,14 +118,18 @@ var
 begin
 
    CreateGroup('Microsoft Windows FileSystem', 0);
+   if IsAppElevated then
+      AddItem('EventViewer logs', 0, True);
    AddItem('Log files (inside Windows)', 0, True);
    AddItem('Log files (System drive)', 0, False);
    AddItem('Prefetch files', 0, False);
    AddItem('Temp files (Current User)', 0, True);
    AddItem('Temp files (Windows)', 0, True);
-   AddItem('Windows Update cache', 0, True);
+   if IsAppElevated then
+      AddItem('Windows Update cache', 0, True);
 
    CreateGroup('Microsoft Windows Registry', 1);
+   AddItem('MRU list: Run', 1, True);
    if IsAppElevated then
       AddItem('Shared DLL''s', 1, True);
 
@@ -157,6 +161,24 @@ begin
       // Windows FileSystem =======================================================================
       if grp.Header = 'Microsoft Windows FileSystem' then
       begin
+         // c:\Windows\*.log ----------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'EventViewer logs' then
+         begin
+            if IsAppElevated then
+            begin
+               if GetServiceState('eventlog') <> SERVICE_STOPPED then
+               begin
+                  if not StopServiceAndWait('eventlog', 10000) then
+                     exit;
+               end;
+               TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'System32\winevt\Logs'), '*.evtx', False, False);
+               ServiceControl('eventlog', 0); // restart
+            end;
+         end;
+
+         // c:\Windows\*.log ----------------------------------------------------------------------
+         if lvSysPurge.Items[i].Caption = 'Log files (inside Windows)' then
+            TaskCleanFolder(lvSysPurge.Items[i], GetEnvironmentVariable('SystemRoot'), '*.log', False, False);
 
          // c:\Windows\*.log ----------------------------------------------------------------------
          if lvSysPurge.Items[i].Caption = 'Log files (inside Windows)' then
@@ -188,7 +210,6 @@ begin
          // %SystemRoot%\SoftwareDistribution\Download
          if lvSysPurge.Items[i].Caption = 'Windows Update cache' then
          begin
-            ShowMessage('check');
             if IsAppElevated then
             begin
                if GetServiceState('wuauserv') <> SERVICE_STOPPED then
@@ -196,7 +217,6 @@ begin
                   if not StopServiceAndWait('wuauserv', 10000) then
                      exit;
                end;
-               ShowMessage('srv stopped');
                TaskCleanFolder(lvSysPurge.Items[i], TPath.Combine(GetEnvironmentVariable('SystemRoot'), 'SoftwareDistribution\Download'), '*.*', True, True);
                ServiceControl('wuauserv', 0); // restart
             end;
@@ -206,6 +226,14 @@ begin
       // Windows Registry =========================================================================
       if grp.Header = 'Microsoft Windows Registry' then
       begin
+
+         // MRU list: Run
+            if lvSysPurge.Items[i].Caption = 'MRU list: Run' then
+            begin
+               RegDeleteAllValues(HKEY_CURRENT_USER, '\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU', False);
+
+               replace with task, count deleted items
+            end;
 
          // Shared DLL's
          if IsAppElevated then

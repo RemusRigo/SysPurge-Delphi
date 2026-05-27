@@ -1,14 +1,14 @@
 //-------------------------------------------------------------------------------------------------
 // libReg - Registry functions
 //    © 2026 Remus Rigo
-//       v1.0 2026-05-08
+//       v1.0 2026-05-27
 //-------------------------------------------------------------------------------------------------
 unit libReg;
 
 interface
 
 uses
-  Windows, Registry;
+  Windows,  System.Classes, Registry;
 
 function RegReadBool  (Root: HKEY; const Path, Name: string): Boolean;
 function RegWriteBool (Root: HKEY; const Path, Name: string; Value: Boolean): Boolean;
@@ -20,7 +20,8 @@ function RegReadSZ  (Root: HKEY; const Path, Name: string): string;
 function RegWriteSZ (Root: HKEY; const Path, Name, Value: string): Boolean;
 
 function RegValueExists(root: HKEY; const path, valueName : string): Boolean;
-function RegDeleteValue (Root: HKEY; const Path, Name: string): Boolean;
+function RegDeleteValuer(root: HKEY; const path, name: string): Boolean;
+function RegDeleteAllValues(root: HKEY; const path: string; deleteDefaultValue : Boolean): Boolean;
 
 implementation
 
@@ -183,7 +184,7 @@ end;
 // Delete value
 function RegDeleteValue(root: HKEY; const path, name: string): Boolean;
 var
-   reg: TRegistry;
+   reg   : TRegistry;
 begin
    result := False;
    reg := TRegistry.Create(KEY_WRITE);
@@ -202,6 +203,39 @@ begin
       end;
    finally
       reg.Free;
+   end;
+end;
+
+//--------------------------------------------------------------------------------------------------
+// Delete all values
+function RegDeleteAllValues(root: HKEY; const path: string; deleteDefaultValue : Boolean): Boolean;
+var
+   i     : Integer;
+   reg   : TRegistry;
+   values: TStringList;
+begin
+   result:=False;
+   reg:=TRegistry.Create(KEY_ALL_ACCESS);
+   values:=TStringList.Create;
+   try
+      reg.RootKey:=Root;
+      if reg.OpenKey(Path, False) then
+      begin
+          reg.GetValueNames(values);
+          for i:=Values.Count-1 downto 0 do
+          begin
+          if deleteDefaultValue then // delete (default)
+             Reg.DeleteValue(Values[I])
+          else
+             if (Values[I] <> '') then  // skip (default)
+                Reg.DeleteValue(Values[I]);
+          end;
+        reg.CloseKey;
+        result:=True;
+      end;
+   finally
+      reg.Free;
+      values.Free;
    end;
 end;
 

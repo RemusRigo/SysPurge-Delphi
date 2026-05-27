@@ -20,10 +20,11 @@ Just run SysPurge.exe
 ## Features
 
 * Build options at startup (if application is not running with elevated privileges, some options are not available)
+* Delete Event Viewer logs
 * Delete Windows log files
 * Delete Windows Prefetch files
 * Delete Windows Temporary files
-* Clean Windows Update cache
+* Delete Windows Update cache
 * Delete Registry missing Shared Dll's
 
 
@@ -36,7 +37,8 @@ Just run SysPurge.exe
 
 ## Roadmap
 
-* 2026-05-26: Add: Clean Windows Update cache
+* 2026-05-27: Add: Delete Event Viewer logs
+* 2026-05-26: Add: Delete Windows Update cache
 * 2026-05-26: Add: [Windows](https://icon-icons.com/icon/windows/284) by [Kyo-Tux (Asher)](https://icon-icons.com/authors/5-kyo-tux-asher)
 * 2026-05-26: Add: [Recycle bin empty](https://icon-icons.com/icon/recycle-bin-empty/14827) by [Tatice](https://icon-icons.com/authors/55-tatice)
 * 2026-05-25: Add: Show About form if right-click on title/caption
