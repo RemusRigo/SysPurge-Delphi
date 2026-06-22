@@ -3,7 +3,7 @@
         <ProjectGuid>{A5FE6DD1-509A-42B9-84ED-D891A2274130}</ProjectGuid>
     </PropertyGroup>
     <ItemGroup>
-        <Projects Include="SysPurge.dproj">
+        <Projects Include="SysPurge\SysPurge.dproj">
             <Dependencies/>
         </Projects>
     </ItemGroup>
@@ -15,13 +15,13 @@
         </BorlandProject>
     </ProjectExtensions>
     <Target Name="SysPurge">
-        <MSBuild Projects="SysPurge.dproj"/>
+        <MSBuild Projects="SysPurge\SysPurge.dproj"/>
     </Target>
     <Target Name="SysPurge:Clean">
-        <MSBuild Projects="SysPurge.dproj" Targets="Clean"/>
+        <MSBuild Projects="SysPurge\SysPurge.dproj" Targets="Clean"/>
     </Target>
     <Target Name="SysPurge:Make">
-        <MSBuild Projects="SysPurge.dproj" Targets="Make"/>
+        <MSBuild Projects="SysPurge\SysPurge.dproj" Targets="Make"/>
     </Target>
     <Target Name="Build">
         <CallTarget Targets="SysPurge"/>

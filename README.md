@@ -26,17 +26,21 @@ Just run SysPurge.exe
 * Delete Windows Temporary files
 * Delete Windows Update cache
 * Delete Registry missing Shared Dll's
+* Delete Registry Run MRU list
 
 
 
 ## Statistics
 
-!\[GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/RemusRigo/SysPurge-Delphi/total)
+![status](https://img.shields.io/badge/status-on%20hold-yellow)
+<br>
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/RemusRigo/SysPurge-Delphi/total)
 
 
 
 ## Roadmap
 
+* 2026-05-28: Add: Delete Registry Run MRU list
 * 2026-05-27: Add: Delete Event Viewer logs
 * 2026-05-26: Add: Delete Windows Update cache
 * 2026-05-26: Add: [Windows](https://icon-icons.com/icon/windows/284) by [Kyo-Tux (Asher)](https://icon-icons.com/authors/5-kyo-tux-asher)

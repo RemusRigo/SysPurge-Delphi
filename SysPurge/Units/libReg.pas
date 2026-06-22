@@ -20,7 +20,8 @@ function RegReadSZ  (Root: HKEY; const Path, Name: string): string;
 function RegWriteSZ (Root: HKEY; const Path, Name, Value: string): Boolean;
 
 function RegValueExists(root: HKEY; const path, valueName : string): Boolean;
-function RegDeleteValuer(root: HKEY; const path, name: string): Boolean;
+function RegCountValues(root: HKEY; const path: string; IncludeDefaultValue : Boolean): Integer;
+function RegDeleteValue(root: HKEY; const path, name: string): Boolean;
 function RegDeleteAllValues(root: HKEY; const path: string; deleteDefaultValue : Boolean): Boolean;
 
 implementation
@@ -176,6 +177,41 @@ begin
          reg.CloseKey;
       end;
    finally
+      reg.Free;
+   end;
+end;
+
+//--------------------------------------------------------------------------------------------------
+// Count Values
+function RegCountValues(root: HKEY; const path: string; IncludeDefaultValue : Boolean): Integer;
+var
+   i     : Integer;
+   reg   : TRegistry;
+   values: TStringList;
+begin
+   result:=0;
+   reg:=TRegistry.Create(KEY_READ);
+   values:=TStringList.Create;
+   try
+      reg.RootKey:=Root;
+      if reg.OpenKey(Path, False) then
+      begin
+          reg.GetValueNames(values);
+
+          if IncludeDefaultValue then
+             result:=Values.Count
+          else
+         begin
+            // Count only non-default values
+            for i := 0 to values.Count - 1 do
+               if values[i] <> '' then
+                  Inc(Result);
+         end;
+
+         reg.CloseKey;
+      end;
+   finally
+      values.Free;
       reg.Free;
    end;
 end;

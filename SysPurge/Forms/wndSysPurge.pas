@@ -17,11 +17,18 @@ type
       toolBtnPurge: TToolButton;
       lvSysPurge: TListView;
     imgListLV: TImageList;
+    imgListButtons: TImageList;
+    toolBtnSelectAll: TToolButton;
+    toolBtnDeselectAll: TToolButton;
       procedure FormCreate(Sender: TObject);
       procedure FormResize(Sender: TObject);
       procedure toolBtnPurgeClick(Sender: TObject);
       procedure lvSysPurgeCustomDrawSubItem(Sender: TCustomListView; Item: TListItem;
          SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean);
+    procedure toolBtnSelectAllClick(Sender: TObject);
+    procedure toolBtnDeselectAllClick(Sender: TObject);
+    procedure lvSysPurgeCustomDrawItem(Sender: TCustomListView; Item: TListItem;
+      State: TCustomDrawState; var DefaultDraw: Boolean);
       protected
          procedure CreateWnd; override;
          procedure WndProc(var Message: TMessage); override;
@@ -33,6 +40,7 @@ type
          procedure SetTaskProgress(Item: TListItem; count: Integer; Progress: Integer); overload;
          procedure TaskCleanFolder(item: TListItem; const Path, Mask: string; Recursive, DeleteFolders: Boolean);
          procedure TaskCleanRegistryMissingDLLFiles(item: TListItem; Root: HKEY; path: String);
+         procedure TaskCleanRegistryVaues(item: TListItem; root: HKEY; path: String; IncludeDefault: Boolean);
       public
    end;
 
@@ -230,9 +238,8 @@ begin
          // MRU list: Run
             if lvSysPurge.Items[i].Caption = 'MRU list: Run' then
             begin
-               RegDeleteAllValues(HKEY_CURRENT_USER, '\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU', False);
-
-               replace with task, count deleted items
+               TaskCleanRegistryVaues(lvSysPurge.Items[i], HKEY_CURRENT_USER, '\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU', False);
+               //replace with task, count deleted items
             end;
 
          // Shared DLL's
@@ -419,6 +426,68 @@ begin
       reg.Free;
    end;
 end;
+
+//-------------------------------------------------------------------------------------------------
+// Task: Clean Missing files from Registry
+procedure TfrmSysPurge.TaskCleanRegistryVaues(item: TListItem; root: HKEY; path: String; IncludeDefault: Boolean);
+var
+   i     : Integer;
+   reg   : TRegistry;
+   names      : TStringList;
+   deleted    : Integer;
+   lastUpdate : Cardinal;
+begin
+   SetTaskProgress(Item, 0, 0);
+   deleted:=0;
+   lastUpdate:=0;
+
+   reg:=TRegistry.Create(KEY_READ or KEY_SET_VALUE or KEY_WOW64_64KEY);
+   names:=TStringList.Create;
+
+   try
+      reg.RootKey:=root;
+
+      if not Reg.OpenKey(path, False) then
+      begin
+         SetTaskProgress(Item, 0, 100);
+         Exit;
+      end;
+
+      reg.GetValueNames(names);
+
+      if names.Count = 0 then
+      begin
+         SetTaskProgress(Item, 0, 100);
+         reg.CloseKey;
+         Exit;
+      end;
+
+      for i:=0 to Names.Count - 1 do
+      begin
+         try
+            if (not IncludeDefault) and (names[i] = '') then Continue;
+            reg.DeleteValue(names[i]);
+            Inc(deleted);
+         except
+            // skip values we can't delete (permissions etc.)
+         end;
+
+         if GetTickCount - LastUpdate >= 25 then
+         begin
+            SetTaskProgress(item, deleted, Round((i + 1) / names.Count * 100));
+            LastUpdate:=GetTickCount;
+         end;
+      end;
+
+      reg.CloseKey;
+      SetTaskProgress(item, deleted, 100);
+   finally
+      names.Free;
+      reg.Free;
+   end;
+end;
+
+
 //-------------------------------------------------------------------------------------------------
 // frmSysPurge: onCreate
 procedure TfrmSysPurge.FormCreate(Sender: TObject);
@@ -432,6 +501,29 @@ end;
 procedure TfrmSysPurge.FormResize(Sender: TObject);
 begin
    ResizeColumns;
+end;
+
+//-------------------------------------------------------------------------------------------------
+// lvSysPurge: CustomDrawItem
+procedure TfrmSysPurge.lvSysPurgeCustomDrawItem(Sender: TCustomListView; Item: TListItem;
+  State: TCustomDrawState; var DefaultDraw: Boolean);
+var
+  R: TRect;
+begin
+  // Let Windows draw text normally
+  DefaultDraw := True;
+
+  // Draw selection background yourself
+if cdsSelected in State then
+  begin
+    Sender.Canvas.Brush.Color := clHighlight;
+    Sender.Canvas.FillRect(Item.DisplayRect(drBounds));
+  end
+  else
+  begin
+    Sender.Canvas.Brush.Color := clWindow;
+    Sender.Canvas.FillRect(Item.DisplayRect(drBounds));
+  end;
 end;
 
 //-------------------------------------------------------------------------------------------------
@@ -456,23 +548,30 @@ begin
    // Draw ProGressBar on column 3 (sub-item 2)
    if SubItem <> 2 then Exit;
 
-   DefaultDraw := False;
-   lvCanvas := Sender.Canvas;
+   DefaultDraw:=False;
+   lvCanvas:=Sender.Canvas;
 
    // Retrieve the exact subitem bounding rect from the listview
-   R.Top  := SubItem;
-   R.Left := LVIR_BOUNDS;
-   SendMessage(Sender.Handle, LVM_GETSUBITEMRECT, WPARAM(Item.Index), LPARAM(@R));
+   R.Top:=SubItem;
+   R.Left:=LVIR_BOUNDS;
+   if SendMessage(Sender.Handle, LVM_GETSUBITEMRECT, Item.Index, LPARAM(@R)) = 0 then
+      Exit;
 
    // Shrink for visual padding
    InflateRect(R, -PADDING_H, -PADDING_V);
 
-   Progress := Integer(NativeInt(Item.Data));   // 0..100
+   Progress:=Integer(NativeInt(Item.Data));   // 0..100
 
-   // -- Background --
-   lvCanvas.Brush.Color := COLOR_BG;
-   lvCanvas.Brush.Style := bsSolid;
-   lvCanvas.FillRect(R);
+   if cdsSelected in State then
+   begin
+      lvCanvas.Brush.Color := clHighlight;
+      lvCanvas.FillRect(R);
+   end
+   else
+   begin
+      lvCanvas.Brush.Color := COLOR_BG;
+      lvCanvas.FillRect(R);
+   end;
 
    // -- Filled portion --
    if Progress > 0 then
@@ -486,7 +585,7 @@ begin
       else
          lvCanvas.Brush.Color := COLOR_FILL_ACTIVE;
 
-      lvCanvas.Brush.Style := bsSolid;
+      //lvCanvas.Brush.Style := bsSolid;
       lvCanvas.FillRect(FillRect);
    end;
 
@@ -499,9 +598,9 @@ begin
    if Progress > 0 then
    begin
       Text := IntToStr(Progress) + '%';
-      lvCanvas.Brush.Style := bsClear;
+//      lvCanvas.Brush.Style := bsClear;
       lvCanvas.Font.Color  := clBlack;
-      lvCanvas.Font.Size   := 8;
+//      lvCanvas.Font.Size   := 8;
       DrawText(lvCanvas.Handle, PChar(Text), -1, R, DT_CENTER or DT_VCENTER or DT_SINGLELINE);
    end;
 end;
@@ -523,6 +622,28 @@ begin
          end);
       end;
    end).Start;
+end;
+
+procedure TfrmSysPurge.toolBtnSelectAllClick(Sender: TObject);
+var
+   i: Integer;
+begin
+   lvSysPurge.Items.BeginUpdate; // Prevent flicker
+   try
+     for i := 0 to lvSysPurge.Items.Count - 1 do
+        lvSysPurge.Items[i].Selected := True;
+   finally
+     lvSysPurge.Items.EndUpdate;
+     lvSysPurge.Invalidate; // Force a full repaint
+   end;
+end;
+
+procedure TfrmSysPurge.toolBtnDeselectAllClick(Sender: TObject);
+var
+   i: Integer;
+begin
+   for i:=0 to lvSysPurge.Items.Count - 1 do
+      lvSysPurge.Items[i].Selected:=False;
 end;
 
 end.
