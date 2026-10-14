@@ -1,4 +1,0 @@
-Add App Icon
-Add Icons to ListView groups & items 
-
-Thumbs.db

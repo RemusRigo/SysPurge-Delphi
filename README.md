@@ -1,39 +1,43 @@
 # SysPurge
-
-A Windows cleaner utility
-
+SysPurge: a Windows cleaner utility (Delphi version)
 
 
-## Authors
+
+## Author
 
 * [@remusrigo](https://github.com/RemusRigo)
 * [@remusrigo](https://sourceforge.net/u/remusrigo/profile)
 
 
 
-## Installation
-
-Just run SysPurge.exe
-
-
-
 ## Features
 
-* Build options at startup (if application is not running with elevated privileges, some options are not available)
+* Build options at startup (if the application is not running with elevated privileges, some options are not available)
 * Delete Event Viewer logs
 * Delete Windows log files
 * Delete Windows Prefetch files
-* Delete Windows Temporary files
+* Delete Windows Temporary files (current user and Windows)
 * Delete Windows Update cache
 * Delete Registry missing Shared Dll's
 * Delete Registry Run MRU list
+* Results and progress for each action
+* Right-click on the title bar to show the About form
+* Native Win32/Win64 app: no runtime needed
+
+
+
+## User's Guide
+
+See the [User's Guide](UsersGuide.md) for downloads, installation and usage.
 
 
 
 ## Statistics
 
-![status](https://img.shields.io/badge/status-on%20hold-yellow)
+![Pascal](https://img.shields.io/badge/Language-Pascal-blue)
+![IDE](https://img.shields.io/badge/IDE-Delphi%20RAD%20Studio-purple)
 <br>
+![status](https://img.shields.io/badge/status-on%20hold-yellow) 
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/RemusRigo/SysPurge-Delphi/total)
 
 
@@ -53,5 +57,4 @@ Just run SysPurge.exe
 * 2026-05-24: Add: Column 2 to show results, Column 3 to show Progress
 * 2026-05-22: Add: Implement Task to delete files in given path
 * 2026-05-22: Add: Implement structure of the ListView (Actions in groups are build startup)
-* 2026-05-22: Project started \[Delphi version]
-
+* 2026-05-22: Project started
